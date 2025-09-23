@@ -23,15 +23,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for frontend integration
+
+# CORS middleware to allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False, 
-    allow_methods=["GET", "POST"],  # Apenas métodos necessários
-    allow_headers=["content-type"],  # Headers específicos
+    allow_origins=["*"],     
+    allow_credentials=False,  
+    allow_methods=["*"],    
+    allow_headers=["*"],
 )
-
 
 
 analytics = EventAnalytics()
