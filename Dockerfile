@@ -1,18 +1,18 @@
-# Use official Python image
-FROM python:3.13-slim
+# Forçar plataforma x86_64 para compatibilidade com Linux host
+FROM --platform=linux/amd64 python:3.13-slim
 
-# Set working directory
+# Definir diretório de trabalho
 WORKDIR /app
 
-# Install dependencies
+# Copiar e instalar dependências
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Copiar todos os arquivos do projeto
 COPY . .
 
-# Expose the app port
+# Expor porta interna do FastAPI
 EXPOSE 8000
 
-# Run with uvicorn in production mode
+# Rodar Uvicorn em modo produção
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
