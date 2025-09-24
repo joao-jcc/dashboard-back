@@ -200,9 +200,17 @@ class EventAnalytics:
         remaining_days = []
         inscriptions = []
         
+        # CORREÇÃO DEFINITIVA: Sempre incluir todas as inscrições no ponto final
+        total_inscriptions = len(inscriptions_df)
+        
         for days in range(max_days_antecedence, min_days - 1, -1):  # From max days down to min_days
-            # Count cumulative inscriptions up to this point (days of antecedence >= days)
-            count = len(inscriptions_df[inscriptions_df['dias_antecedencia'] >= days])
+            # Para dias >= min_days, contar baseado em dias_antecedencia
+            if days > min_days:
+                count = len(inscriptions_df[inscriptions_df['dias_antecedencia'] >= days])
+            else:
+                # Para o último ponto (min_days), sempre usar total de inscrições
+                count = total_inscriptions
+                
             remaining_days.append(days)
             inscriptions.append(count)
         
@@ -246,19 +254,33 @@ class EventAnalytics:
         remaining_days = []
         revenues = []
         
+        # CORREÇÃO DEFINITIVA: Calcular receita total uma vez
+        total_revenue = 0.0
+        for _, transaction in transactions_df.iterrows():
+            amount = transaction['amount_float']
+            credit = transaction['credit']
+            if credit == 1:
+                total_revenue += amount
+            else:
+                total_revenue -= amount
+        
         for days in range(max_days_antecedence, min_days - 1, -1):  # From max days down to min_days
-            # Calculate cumulative revenue up to this point (days of antecedence >= days)
-            relevant_transactions = transactions_df[transactions_df['dias_antecedencia'] >= days]
-            
-            revenue = 0.0
-            for _, transaction in relevant_transactions.iterrows():
-                amount = transaction['amount_float']
-                credit = transaction['credit']
+            if days > min_days:
+                # Para dias > min_days, calcular baseado em dias_antecedencia
+                relevant_transactions = transactions_df[transactions_df['dias_antecedencia'] >= days]
                 
-                if credit == 1:
-                    revenue += amount
-                else:  # credit == 0
-                    revenue -= amount
+                revenue = 0.0
+                for _, transaction in relevant_transactions.iterrows():
+                    amount = transaction['amount_float']
+                    credit = transaction['credit']
+                    
+                    if credit == 1:
+                        revenue += amount
+                    else:
+                        revenue -= amount
+            else:
+                # Para o último ponto (min_days), sempre usar receita total
+                revenue = total_revenue
             
             remaining_days.append(days)
             revenues.append(round(revenue, 2))
