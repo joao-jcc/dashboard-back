@@ -62,7 +62,7 @@ class DatabaseManager:
         SELECT id, titulo, tipo, created_at, data_inicio, limit_maximo_inscritos, occupied_vacancies, igreja_id 
         FROM eventos 
         WHERE igreja_id = %s
-        ORDER BY created_at DESC
+        ORDER BY LOWER(titulo)
         """
         
         self._cursor.execute(query, (self.ORG_ID,))
