@@ -1,309 +1,165 @@
-"""
-Analytics engine for calculating event metrics and chart data
-Handles business logic for dashboard statistics
-"""
-
 import pandas as pd
-from datetime import datetime, timedelta
+import numpy as np
+from datetime import datetime
 from typing import List, Dict, Optional
 from src.models import EventSummary, EventDetails
-from src.database_manager import DatabaseManager
+from src.csv_loader import CSVLoader
 
+csv_loader = CSVLoader()
 
 class EventAnalytics:
-    """Handles analytics calculations for events dashboard"""
     def __init__(self):
-        pass
+        self.loader = csv_loader
 
     def get_events_summary(self) -> List[EventSummary]:
-        """
-        Returns EventSummary[] with id, name, created_at, start_date
-        For all events
-        """
-        with DatabaseManager() as db:
-            events = db.get_events_for_organization()
-            
-            events_summary = []
-            for event in events:
-                # Parse created_at and data_inicio from database
-                created_at = pd.to_datetime(event['created_at'])
-                start_date = pd.to_datetime(event['data_inicio'])
-                
-                summary = EventSummary(
-                    id=int(event['id']),
-                    name=str(event['titulo']),
-                    created_at=created_at,
-                    start_date=start_date
-                )
-                events_summary.append(summary)
-        
-        return events_summary
-    
-    def get_event_details(self, event_id: int) -> Optional[EventDetails]:
-        """
-        Get detailed analytics for a specific event
-        Returns EventDetails with charts and metrics
-        """
-        with DatabaseManager() as db:
-            # Get basic event info
-            event_data = db.get_event_by_id(event_id)
-            if not event_data:
-                return None
-            
-            # Get related data and convert to DataFrames when needed for analytics
-            inscriptions_df = pd.DataFrame(db.get_inscricoes_for_event(event_id))
-            
-            # Use optimized SQL query for revenue calculation
-            total_revenue = db.get_total_revenue_for_event(event_id)
-            transactions_df = pd.DataFrame(db.get_transactions_for_event(event_id))
-
-            
-            # Calculate basic metrics
-            current_inscriptions = len(inscriptions_df)
-            goal = int(event_data.get('limit_maximo_inscritos', 0))
-            ticket_price = self._calculate_ticket_price(transactions_df)
-            
-            # Calculate time-based metrics
-            created_at = pd.to_datetime(event_data['created_at'])
-            start_date = pd.to_datetime(event_data['data_inicio'])
-            today = datetime.now()
-            days_remaining = max(0, (start_date - today).days)
-            is_active = today < start_date  # True if event is still active
-            
-            # Calculate targets
-            average_inscriptions = self._calculate_average_inscriptions(event_data, inscriptions_df)
-            daily_target = self._calculate_daily_target(event_data, inscriptions_df)
-            
-            # Generate chart data
-            chart_inscriptions = self._generate_inscriptions_chart_data(event_data, inscriptions_df)
-            chart_revenue = self._generate_revenue_chart_data(event_data, transactions_df)
-            
-            result = EventDetails(
-                id=event_id,
-                name=str(event_data['titulo']),
-                chartDataInscriptions=chart_inscriptions,
-                chartDataRevenue=chart_revenue,
-                currentInscriptions=current_inscriptions,
-                averageInscriptions=average_inscriptions,
-                targetInscriptions=goal,
-                daysRemaining=days_remaining,
-                dailyInscriptionsGoal=daily_target,
-                ticketPrice=ticket_price,
-                totalRevenue=total_revenue,
-                isActive=is_active
+        events_df = self.loader.events
+        events_summary = []
+        for _, event in events_df.iterrows():
+            created_at = pd.to_datetime(event['created_at'])
+            start_date = pd.to_datetime(event['data_inicio'])
+            summary = EventSummary(
+                id=int(event['id']),
+                name=str(event['titulo']),
+                created_at=created_at,
+                start_date=start_date
             )
-        
-        return result
-    
-    def _calculate_total_revenue(self, transactions_df: pd.DataFrame) -> float:
-        """Calculate total revenue from transactions"""
-        if transactions_df.empty:
-            return 0.0
+            events_summary.append(summary)
+        return events_summary
 
-        # Convert amount to float
-        transactions_df = transactions_df.copy()
-        transactions_df['amount_float'] = transactions_df['amount'].astype(str).str.replace(',', '.').astype(float)
-        
-        # Calculate revenue: sum when credit=1, subtract when credit=0
-        revenue = 0.0
-        for _, transaction in transactions_df.iterrows():
-            amount = transaction['amount_float']
-            credit = transaction['credit']
-            
-            if credit == 1:
-                revenue += amount
-            else:  # credit == 0
-                revenue -= amount
-        
-        return round(revenue, 2)
-    
-    def _calculate_average_inscriptions(self, event_data: Dict, inscriptions_df: pd.DataFrame) -> float:
-        """Calculate average inscriptions per day for a specific event"""
-        # Get event dates
-        created_at = pd.to_datetime(event_data['created_at'])
-        start_date = pd.to_datetime(event_data['data_inicio'])
-        today = datetime.now()
-        
-        # Calculate the period in days
-        if today < start_date:
-            # Event hasn't started yet: use today - created_at
-            total_days = (today - created_at).days
-        else:
-            # Event has started: use start_date - created_at
-            total_days = (start_date - created_at).days
-        
-        # Avoid division by zero
-        if total_days <= 0:
-            return 0.0
-        
-        # Use provided inscriptions_df instead of fetching again
-        total_inscriptions = len(inscriptions_df)
-    
-        # Calculate average per day
-        return round(total_inscriptions / total_days, 2)
-    
-    def _calculate_daily_target(self, event_data: Dict, inscriptions_df: pd.DataFrame) -> float:
-        """Calculate daily inscription target to reach goal"""
-        
-        # Get event dates
-        start_date = pd.to_datetime(event_data['data_inicio'])
-        today = datetime.now()
-        
-        # If event has already started/concluded, return 0
-        if today >= start_date:
-            return 0.0
-        
-        # Calculate days remaining until event starts
-        days_remaining = (start_date - today).days
-        if days_remaining <= 0:
-            return 0.0
-        
-        # Use provided data instead of fetching again
+    def get_event_details(self, event_id: int) -> Optional[EventDetails]:
+        events_df = self.loader.events
+        event_row = events_df[events_df['id'] == event_id]
+        if event_row.empty:
+            return None
+        event_data = event_row.iloc[0].to_dict()
+
+        inscriptions_df = self.loader.inscricaos
+        inscriptions_df = inscriptions_df[inscriptions_df['evento_id'] == event_id]
+
+        transactions_df = self.loader.transactions
+        transactions_df = transactions_df[transactions_df['evento_id'] == event_id]
+
+        total_revenue = self._calculate_total_revenue(transactions_df)
         current_inscriptions = len(inscriptions_df)
         goal = int(event_data.get('limit_maximo_inscritos', 0))
-        
-        # Calculate remaining needed inscriptions
+        ticket_price = self._calculate_ticket_price(transactions_df)
+
+        created_at = pd.to_datetime(event_data['created_at'])
+        start_date = pd.to_datetime(event_data['data_inicio'])
+        today = datetime.now()
+        days_remaining = max(0, (start_date - today).days)
+        is_active = today < start_date
+
+        average_inscriptions = self._calculate_average_inscriptions(event_data, inscriptions_df)
+        daily_target = self._calculate_daily_target(event_data, inscriptions_df)
+
+        chart_inscriptions = self._generate_inscriptions_chart_data(event_data, inscriptions_df)
+        chart_revenue = self._generate_revenue_chart_data(event_data, transactions_df)
+
+        result = EventDetails(
+            id=event_id,
+            name=str(event_data['titulo']),
+            chartDataInscriptions=chart_inscriptions,
+            chartDataRevenue=chart_revenue,
+            currentInscriptions=current_inscriptions,
+            averageInscriptions=average_inscriptions,
+            targetInscriptions=goal,
+            daysRemaining=days_remaining,
+            dailyInscriptionsGoal=daily_target,
+            ticketPrice=ticket_price,
+            totalRevenue=total_revenue,
+            isActive=is_active
+        )
+        return result
+
+    def _calculate_total_revenue(self, transactions_df: pd.DataFrame) -> float:
+        if transactions_df.empty:
+            return 0.0
+        df = transactions_df.copy()
+        df['amount_float'] = df['amount'].astype(str).str.replace(',', '.').astype(float)
+        df['signed_amount'] = df['amount_float'] * df['credit'].replace({0: 0, 1: 1})
+        return round(df['signed_amount'].sum(), 2)
+
+    def _calculate_average_inscriptions(self, event_data: Dict, inscriptions_df: pd.DataFrame) -> float:
+        created_at = pd.to_datetime(event_data['created_at'])
+        start_date = pd.to_datetime(event_data['data_inicio'])
+        today = datetime.now()
+        total_days = (today - created_at).days if today < start_date else (start_date - created_at).days
+        if total_days <= 0:
+            return 0.0
+        total_inscriptions = len(inscriptions_df)
+        return round(total_inscriptions / total_days, 2)
+
+    def _calculate_daily_target(self, event_data: Dict, inscriptions_df: pd.DataFrame) -> float:
+        start_date = pd.to_datetime(event_data['data_inicio'])
+        today = datetime.now()
+        if today >= start_date:
+            return 0.0
+        days_remaining = (start_date - today).days
+        current_inscriptions = len(inscriptions_df)
+        goal = int(event_data.get('limit_maximo_inscritos', 0))
         remaining_needed = max(0, goal - current_inscriptions)
-        
-        # Calculate daily target
         return round(remaining_needed / days_remaining, 1)
-    
+
     def _generate_inscriptions_chart_data(self, event_data: Dict, inscriptions_df: pd.DataFrame) -> Dict[str, List[int]]:
-        """Generate chart data for inscriptions over time based on days before event start"""
-        
         if inscriptions_df.empty:
             return {"remaining_days": [], "inscriptions": []}
-        
-        # Get event dates
-        created_at = pd.to_datetime(event_data['created_at'])
+
         start_date = pd.to_datetime(event_data['data_inicio'])
-        today = datetime.now()
-        
-        # Calculate maximum days of antecedence (from created_at to start_date)
-        max_days_antecedence = (start_date - created_at).days
-        
-        # Convert inscription dates to datetime
-        inscriptions_df = inscriptions_df.copy()
-        inscriptions_df['created_at'] = pd.to_datetime(inscriptions_df['created_at'])
-        
-        # Calculate days of antecedence for each inscription (start_date - inscription_date)
-        inscriptions_df['dias_antecedencia'] = (start_date - inscriptions_df['created_at']).dt.days
-        
-        # Determine the range of days to analyze
-        if today < start_date:
-            days_remaining = (start_date - today).days
-            min_days = max(0, days_remaining)
-        else:
-            min_days = 0
-        
-        # Generate chart data (cumulative inscriptions by days of antecedence)
-        remaining_days = []
-        inscriptions = []
-        
-        # CORREÇÃO DEFINITIVA: Sempre incluir todas as inscrições no ponto final
-        total_inscriptions = len(inscriptions_df)
-        
-        for days in range(max_days_antecedence, min_days - 1, -1):  # From max days down to min_days
-            # Para dias >= min_days, contar baseado em dias_antecedencia
-            if days > min_days:
-                count = len(inscriptions_df[inscriptions_df['dias_antecedencia'] >= days])
-            else:
-                # Para o último ponto (min_days), sempre usar total de inscrições
-                count = total_inscriptions
-                
-            remaining_days.append(days)
-            inscriptions.append(count)
-        
-        return {
-            "remaining_days": remaining_days,
-            "inscriptions": inscriptions
-        }
-    
+        created_at = pd.to_datetime(event_data['created_at'])
+        df = inscriptions_df.copy()
+        df['created_at'] = pd.to_datetime(df['created_at'])
+        df['dias_antecedencia'] = (start_date - df['created_at']).dt.days
+
+        max_days = (start_date - created_at).days
+        total_inscriptions = len(df)
+
+        # Cumulative counts por dia
+        counts = df['dias_antecedencia'].value_counts().sort_index(ascending=False)
+        days_range = np.arange(max_days, -1, -1)
+        cumulative = np.zeros_like(days_range)
+
+        cum_sum = 0
+        for i, day in enumerate(days_range):
+            if day in counts:
+                cum_sum += counts[day]
+            cumulative[i] = cum_sum
+
+        # Último ponto = total
+        cumulative[-1] = total_inscriptions
+
+        return {"remaining_days": days_range.tolist(), "inscriptions": cumulative.tolist()}
+
     def _generate_revenue_chart_data(self, event_data: Dict, transactions_df: pd.DataFrame) -> Dict[str, List[float]]:
-        """Generate chart data for revenue over time based on days before event start"""
-        
         if transactions_df.empty:
             return {"remaining_days": [], "revenue": []}
-        
-        # Get event dates
-        created_at = pd.to_datetime(event_data['created_at'])
+
         start_date = pd.to_datetime(event_data['data_inicio'])
-        today = datetime.now()
-        
-        # Calculate maximum days of antecedence (from created_at to start_date)
-        max_days_antecedence = (start_date - created_at).days
-        
-        # Convert transaction dates and amounts
-        transactions_df = transactions_df.copy()
-        transactions_df['created_at_dt'] = pd.to_datetime(transactions_df['created_at'])
-        transactions_df['amount_float'] = transactions_df['amount'].astype(str).str.replace(',', '.').astype(float)
-        
-        # Calculate days of antecedence for each transaction (start_date - transaction_date)
-        transactions_df['dias_antecedencia'] = (start_date - transactions_df['created_at_dt']).dt.days
-        
-        # Determine the range of days to analyze
-        if today < start_date:
-            # Event hasn't started yet: go from max_days to days_remaining
-            days_remaining = (start_date - today).days
-            min_days = max(0, days_remaining)
-        else:
-            # Event has started/ended: go from max_days to 0
-            min_days = 0
-        
-        # Generate chart data (cumulative revenue by days of antecedence)
-        remaining_days = []
-        revenues = []
-        
-        # CORREÇÃO DEFINITIVA: Calcular receita total uma vez
-        total_revenue = 0.0
-        for _, transaction in transactions_df.iterrows():
-            amount = transaction['amount_float']
-            credit = transaction['credit']
-            if credit == 1:
-                total_revenue += amount
-            else:
-                total_revenue -= amount
-        
-        for days in range(max_days_antecedence, min_days - 1, -1):  # From max days down to min_days
-            if days > min_days:
-                # Para dias > min_days, calcular baseado em dias_antecedencia
-                relevant_transactions = transactions_df[transactions_df['dias_antecedencia'] >= days]
-                
-                revenue = 0.0
-                for _, transaction in relevant_transactions.iterrows():
-                    amount = transaction['amount_float']
-                    credit = transaction['credit']
-                    
-                    if credit == 1:
-                        revenue += amount
-                    else:
-                        revenue -= amount
-            else:
-                # Para o último ponto (min_days), sempre usar receita total
-                revenue = total_revenue
-            
-            remaining_days.append(days)
-            revenues.append(round(revenue, 2))
-        
+        created_at = pd.to_datetime(event_data['created_at'])
+        df = transactions_df.copy()
+        df['created_at'] = pd.to_datetime(df['created_at'], format='mixed', errors='coerce')
+        df['amount_float'] = df['amount'].astype(str).str.replace(',', '.').astype(float)
+        df['signed_amount'] = df['amount_float'] * df['credit'].replace({0: 0, 1: 1})
+        df['dias_antecedencia'] = (start_date - df['created_at']).dt.days
+
+        max_days = (start_date - created_at).days
+        days_range = np.arange(0, max_days + 1)
+
+        # Soma diária vetorizada
+        daily_revenue = df.groupby('dias_antecedencia')['signed_amount'].sum().reindex(days_range, fill_value=0).values
+        cumulative = np.cumsum(daily_revenue[::-1])[::-1] 
+
         return {
-            "remaining_days": remaining_days,
-            "revenue": revenues
+            "remaining_days": days_range.tolist(),
+            "revenue": np.round(cumulative, 2).tolist()
         }
-    
+
+
     def _calculate_ticket_price(self, transactions_df: pd.DataFrame) -> float:
-        """Calculate ticket price for an event based on successful transactions"""
-        
-        # Calculate average from successful transactions (credit = 1 only)
         if transactions_df.empty:
             return 0.0
-   
-        # Filter only credit transactions (income)
         credit_transactions = transactions_df[transactions_df['credit'] == 1]
-        
         if credit_transactions.empty:
             return 0.0
-        
         amounts = credit_transactions['amount'].astype(str).str.replace(',', '.').astype(float)
-        
         return round(amounts.mean(), 2)
-      

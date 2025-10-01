@@ -102,21 +102,6 @@ class DatabaseManager:
         return inscricoes
 
     
-    def get_pagamentos_for_event(self, event_id: int) -> List[Dict]:
-        """Get all payments for a specific event"""
-        self._ensure_connection()
-        
-        query = """
-        SELECT id, status, amount, payment_type, evento_id, additional_value, created_at 
-        FROM pagamentos 
-        WHERE evento_id = %s AND status IN ('Compensado', 'Ok', 'Aprovado')
-        """
-    
-        self._cursor.execute(query, (event_id,))
-        pagamentos = self._cursor.fetchall()
-
-        return pagamentos
-    
     def get_transactions_for_event(self, event_id: int) -> List[Dict]:
         """Get all transactions for a specific event based on valid enrollments"""
         self._ensure_connection()
