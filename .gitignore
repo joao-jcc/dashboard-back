@@ -13,3 +13,6 @@ __pycache__/
 
 # csv's
 data
+
+# tar files
+*.tar
