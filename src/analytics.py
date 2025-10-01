@@ -125,8 +125,8 @@ class EventAnalytics:
                 cum_sum += counts[day]
             cumulative[i] = cum_sum
 
-        # Último ponto = total
-        cumulative[-1] = total_inscriptions
+        if len(cumulative) > 0:
+            cumulative[-1] = total_inscriptions
 
         return {"remaining_days": days_range.tolist(), "inscriptions": cumulative.tolist()}
 
