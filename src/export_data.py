@@ -73,10 +73,12 @@ def export_events(cursor, batch_size=BATCH_SIZE, directory="data"):
 
 def export_inscricaos(cursor, batch_size=BATCH_SIZE, directory="data"):
     sql_query_template = (
-        "SELECT i.id AS id, i.inscrito_id, i.evento_id, i.status, i.created_at "
+        "SELECT i.id AS id, i.inscrito_id, i.evento_id, i.status, i.created_at, i.canceled "
         "FROM inscricaos i "
         "JOIN eventos e ON e.id = i.evento_id "
-        "WHERE e.igreja_id = {org_id} {last_id_filter}"
+        "WHERE e.igreja_id = {org_id} "
+        "AND i.status IN ('Ok', 'Pendente') "
+        "AND i.canceled = 0 {last_id_filter}"
     )
     export_data(cursor, sql_query_template, batch_size, "inscricaos.csv", id_column="id", table_alias="i", directory=directory)
 
@@ -89,6 +91,8 @@ def export_transactions(cursor, batch_size=BATCH_SIZE, directory="data"):
         "JOIN inscricaos i ON i.id = t.enrollment_id "
         "JOIN eventos e ON e.id = i.evento_id "
         "WHERE e.igreja_id = {org_id} "
+        "AND i.status IN ('Ok', 'Pendente') "
+        "AND i.canceled = 0 "
         "AND t.counts_for IN ('both', 'organization_only') "
         "{last_id_filter}"
     )
