@@ -172,75 +172,52 @@ class EventAnalytics:
 
     def get_dynamic_fields_distribution(self, event_id: int) -> Dict[str, Dict[str, int]]:
         """
-        Analisa a distribuição dos campos dinâmicos de um evento específico
-        
-        Args:
-            event_id: ID do evento para analisar
-            
-        Returns:
-            Dicionário com as distribuições: 
-            {
-                "label1": {"valor1": count, "valor2": count, "undefined": count},
-                "label2": {"valor1": count, "undefined": count}
-            }
+        Analisa a distribuição dos campos dinâmicos de um evento específico usando vetorização pandas
         """
-        # 1. Buscar campos dinâmicos do evento
         event_fields_df = self.loader.event_dynamic_fields
         event_fields = event_fields_df[event_fields_df['evento_id'] == event_id]
-        
         if event_fields.empty:
             return {}
-        
-        # 2. Buscar inscrições do evento
+
         inscriptions_df = self.loader.inscricaos
         event_inscriptions = inscriptions_df[inscriptions_df['evento_id'] == event_id]
-        
         if event_inscriptions.empty:
             return {}
-        
-        # 3. Analisar cada campo dinâmico
+
+        # Extrai todos os pares chave:valor do campo serial_event_dynamic_fields
+        # Exemplo: "100: 25\n120: Masculino\n130: Superior"
+        serials = event_inscriptions['serial_event_dynamic_fields'].fillna("")
+        # Cria um DataFrame explodido com todas as chaves e valores
+        exploded = serials.str.extractall(r"(\d+):\s*([^\n]*)")
+        exploded.index = exploded.index.droplevel(1)  # Remove o segundo nível do índice
+        exploded.columns = ['field_id', 'field_value']
+        exploded['field_id'] = exploded['field_id'].astype(str)
+        exploded['field_value'] = exploded['field_value'].str.strip()
+        exploded['inscricao_idx'] = exploded.index
+
+        # Junta com os campos dinâmicos do evento
+        valid_field_ids = set(str(fid) for fid in event_fields['id'])
+        exploded = exploded[exploded['field_id'].isin(valid_field_ids)]
+
+        # Para cada campo, conta os valores
         result = {}
-        
         for _, field in event_fields.iterrows():
             field_id = str(field['id'])
             field_label = field['label']
-            
-            # Contar valores para este campo específico
-            value_counts = {}
-            total_inscriptions = len(event_inscriptions)
-            undefined_count = 0
-            
-            for _, inscription in event_inscriptions.iterrows():
-                serial_data = inscription.get('serial_event_dynamic_fields', '')
-                
-                if pd.isna(serial_data) or not serial_data:
-                    undefined_count += 1
-                    continue
-                
-                # Buscar o valor do campo específico no texto serializado
-                field_value = self._extract_field_value(str(serial_data), field_id)
-                
-                if field_value is None or field_value == '':
-                    undefined_count += 1
-                else:
-                    # Limpar e normalizar o valor
-                    clean_value = str(field_value).strip()
-                    if clean_value:
-                        value_counts[clean_value] = value_counts.get(clean_value, 0) + 1
-                    else:
-                        undefined_count += 1
-            
-            # Adicionar 'undefined' se houver
+            # Filtra só os valores deste campo
+            field_values = exploded[exploded['field_id'] == field_id]['field_value']
+            counts = field_values.value_counts().to_dict()
+            # Conta undefined (inscrições que não têm esse campo)
+            total_inscr = len(event_inscriptions)
+            undefined_count = total_inscr - len(field_values)
             if undefined_count > 0:
-                value_counts['undefined'] = undefined_count
-            
+                counts['undefined'] = undefined_count
             # Filtrar campos com apenas 1 tipo ou mais de 20 tipos
-            unique_types = len(value_counts)
+            unique_types = len(counts)
             if unique_types > 1 and unique_types <= 20:
-                result[field_label] = value_counts
-        
+                result[field_label] = counts
         return result
-    
+
     def _extract_field_value(self, serial_data: str, field_id: str) -> Optional[str]:
         """
         Extrai o valor de um campo específico do texto serializado
