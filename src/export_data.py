@@ -73,7 +73,12 @@ def export_events(cursor, batch_size=BATCH_SIZE, directory="data"):
 
 def export_inscricaos(cursor, batch_size=BATCH_SIZE, directory="data"):
     sql_query_template = (
-        "SELECT i.id AS id, i.inscrito_id, i.evento_id, i.status, i.created_at, i.canceled "
+        "SELECT i.id AS id, i.inscrito_id, i.evento_id, i.status, i.created_at, i.canceled, "
+        "CASE "
+        "    WHEN i.serial_event_dynamic_fields LIKE '%Feminino%' THEN 'Feminino' "
+        "    WHEN i.serial_event_dynamic_fields LIKE '%Masculino%' THEN 'Masculino' "
+        "    ELSE NULL "
+        "END as genero "
         "FROM inscricaos i "
         "JOIN eventos e ON e.id = i.evento_id "
         "WHERE e.igreja_id = {org_id} "
@@ -103,6 +108,6 @@ if __name__ == "__main__":
     conn, cursor = connect_db()
     export_events(cursor)
     export_inscricaos(cursor)
-    export_transactions(cursor)
+    # export_transactions(cursor)
     cursor.close()
     conn.close()

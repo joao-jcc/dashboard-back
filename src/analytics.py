@@ -55,6 +55,7 @@ class EventAnalytics:
 
         chart_inscriptions = self._generate_inscriptions_chart_data(event_data, inscriptions_df)
         chart_revenue = self._generate_revenue_chart_data(event_data, transactions_df)
+        gender_distribution = self._calculate_gender_distribution(inscriptions_df)
 
         result = EventDetails(
             id=event_id,
@@ -68,7 +69,8 @@ class EventAnalytics:
             dailyInscriptionsGoal=daily_target,
             ticketPrice=ticket_price,
             totalRevenue=total_revenue,
-            isActive=is_active
+            isActive=is_active,
+            genderDistribution=gender_distribution
         )
         return result
 
@@ -163,3 +165,20 @@ class EventAnalytics:
             return 0.0
         amounts = credit_transactions['amount'].astype(str).str.replace(',', '.').astype(float)
         return round(amounts.mean(), 2)
+
+    def _calculate_gender_distribution(self, inscriptions_df: pd.DataFrame) -> Dict[str, int]:
+        """
+        Calcula a distribuição de gênero baseada no campo genero das inscrições
+        Retorna dicionário com contagens para masculino, feminino e undefined
+        """
+        if inscriptions_df.empty or 'genero' not in inscriptions_df.columns:
+            return {"masculino": 0, "feminino": 0, "undefined": 0}
+        
+        # Conta as ocorrências de cada gênero
+        gender_counts = inscriptions_df['genero'].value_counts()
+        
+        return {
+            "masculino": int(gender_counts.get('Masculino', 0)),
+            "feminino": int(gender_counts.get('Feminino', 0)), 
+            "undefined": int(gender_counts.get('undefined', 0))
+        }
