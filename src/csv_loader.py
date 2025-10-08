@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import threading
-from .export_data import connect_db, export_events, export_inscricaos, export_transactions
+from .export_data import connect_db, export_events, export_inscricaos, export_transactions, export_event_dynamic_fields
 
 class CSVLoader:
     def __init__(self, directory="data", interval_minutes=20):
@@ -20,6 +20,7 @@ class CSVLoader:
         self.events = self.events.sort_values(by='titulo', key=lambda x: x.str.lower())
         self.inscricaos = pd.read_csv(os.path.join(self.directory, "inscricaos.csv"))
         self.transactions = pd.read_csv(os.path.join(self.directory, "transactions.csv"))
+        self.event_dynamic_fields = pd.read_csv(os.path.join(self.directory, "event_dynamic_fields.csv"))
 
     def _clock_loop(self):
         """Loop interno que atualiza os CSVs periodicamente."""
@@ -30,6 +31,7 @@ class CSVLoader:
                 export_events(cursor)
                 export_inscricaos(cursor)
                 export_transactions(cursor)
+                export_event_dynamic_fields(cursor)
 
                 cursor.close()
                 conn.close()

@@ -74,11 +74,7 @@ def export_events(cursor, batch_size=BATCH_SIZE, directory="data"):
 def export_inscricaos(cursor, batch_size=BATCH_SIZE, directory="data"):
     sql_query_template = (
         "SELECT i.id AS id, i.inscrito_id, i.evento_id, i.status, i.created_at, i.canceled, "
-        "CASE "
-        "    WHEN i.serial_event_dynamic_fields LIKE '%Feminino%' THEN 'Feminino' "
-        "    WHEN i.serial_event_dynamic_fields LIKE '%Masculino%' THEN 'Masculino' "
-        "    ELSE NULL "
-        "END as genero "
+        "i.serial_event_dynamic_fields "
         "FROM inscricaos i "
         "JOIN eventos e ON e.id = i.evento_id "
         "WHERE e.igreja_id = {org_id} "
@@ -104,10 +100,21 @@ def export_transactions(cursor, batch_size=BATCH_SIZE, directory="data"):
     export_data(cursor, sql_query_template, batch_size, "transactions.csv", id_column="id", table_alias="t", directory=directory)
 
 
+def export_event_dynamic_fields(cursor, batch_size=BATCH_SIZE, directory="data"):
+    """Exporta campos dinâmicos dos eventos da organização"""
+    sql_query_template = (
+        "SELECT edf.id AS id, edf.label, edf.evento_id, edf.org_id "
+        "FROM event_dynamic_fields edf "
+        "WHERE edf.org_id = {org_id} {last_id_filter}"
+    )
+    export_data(cursor, sql_query_template, batch_size, "event_dynamic_fields.csv", id_column="id", table_alias="edf", directory=directory)
+
+
 if __name__ == "__main__":
     conn, cursor = connect_db()
-    export_events(cursor)
-    export_inscricaos(cursor)
-    # export_transactions(cursor)
+    # export_events(cursor)
+    # export_inscricaos(cursor)
+    # export_event_dynamic_fields(cursor)
+    export_transactions(cursor)
     cursor.close()
     conn.close()

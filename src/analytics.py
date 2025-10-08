@@ -55,7 +55,6 @@ class EventAnalytics:
 
         chart_inscriptions = self._generate_inscriptions_chart_data(event_data, inscriptions_df)
         chart_revenue = self._generate_revenue_chart_data(event_data, transactions_df)
-        gender_distribution = self._calculate_gender_distribution(inscriptions_df)
 
         result = EventDetails(
             id=event_id,
@@ -69,8 +68,7 @@ class EventAnalytics:
             dailyInscriptionsGoal=daily_target,
             ticketPrice=ticket_price,
             totalRevenue=total_revenue,
-            isActive=is_active,
-            genderDistribution=gender_distribution
+            isActive=is_active
         )
         return result
 
@@ -98,6 +96,11 @@ class EventAnalytics:
         if today >= start_date:
             return 0.0
         days_remaining = (start_date - today).days
+        
+        # Se não há dias restantes ou é zero, retorna 0
+        if days_remaining <= 0:
+            return 0.0
+            
         current_inscriptions = len(inscriptions_df)
         goal = int(event_data.get('limit_maximo_inscritos', 0))
         remaining_needed = max(0, goal - current_inscriptions)
@@ -166,19 +169,95 @@ class EventAnalytics:
         amounts = credit_transactions['amount'].astype(str).str.replace(',', '.').astype(float)
         return round(amounts.mean(), 2)
 
-    def _calculate_gender_distribution(self, inscriptions_df: pd.DataFrame) -> Dict[str, int]:
+
+    def get_dynamic_fields_distribution(self, event_id: int) -> Dict[str, Dict[str, int]]:
         """
-        Calcula a distribuição de gênero baseada no campo genero das inscrições
-        Retorna dicionário com contagens para masculino, feminino e undefined
+        Analisa a distribuição dos campos dinâmicos de um evento específico
+        
+        Args:
+            event_id: ID do evento para analisar
+            
+        Returns:
+            Dicionário com as distribuições: 
+            {
+                "label1": {"valor1": count, "valor2": count, "undefined": count},
+                "label2": {"valor1": count, "undefined": count}
+            }
         """
-        if inscriptions_df.empty or 'genero' not in inscriptions_df.columns:
-            return {"masculino": 0, "feminino": 0, "undefined": 0}
+        # 1. Buscar campos dinâmicos do evento
+        event_fields_df = self.loader.event_dynamic_fields
+        event_fields = event_fields_df[event_fields_df['evento_id'] == event_id]
         
-        # Conta as ocorrências de cada gênero
-        gender_counts = inscriptions_df['genero'].value_counts()
+        if event_fields.empty:
+            return {}
         
-        return {
-            "masculino": int(gender_counts.get('Masculino', 0)),
-            "feminino": int(gender_counts.get('Feminino', 0)), 
-            "undefined": int(gender_counts.get('undefined', 0))
-        }
+        # 2. Buscar inscrições do evento
+        inscriptions_df = self.loader.inscricaos
+        event_inscriptions = inscriptions_df[inscriptions_df['evento_id'] == event_id]
+        
+        if event_inscriptions.empty:
+            return {}
+        
+        # 3. Analisar cada campo dinâmico
+        result = {}
+        
+        for _, field in event_fields.iterrows():
+            field_id = str(field['id'])
+            field_label = field['label']
+            
+            # Contar valores para este campo específico
+            value_counts = {}
+            total_inscriptions = len(event_inscriptions)
+            undefined_count = 0
+            
+            for _, inscription in event_inscriptions.iterrows():
+                serial_data = inscription.get('serial_event_dynamic_fields', '')
+                
+                if pd.isna(serial_data) or not serial_data:
+                    undefined_count += 1
+                    continue
+                
+                # Buscar o valor do campo específico no texto serializado
+                field_value = self._extract_field_value(str(serial_data), field_id)
+                
+                if field_value is None or field_value == '':
+                    undefined_count += 1
+                else:
+                    # Limpar e normalizar o valor
+                    clean_value = str(field_value).strip()
+                    if clean_value:
+                        value_counts[clean_value] = value_counts.get(clean_value, 0) + 1
+                    else:
+                        undefined_count += 1
+            
+            # Adicionar 'undefined' se houver
+            if undefined_count > 0:
+                value_counts['undefined'] = undefined_count
+            
+            # Filtrar campos com apenas 1 tipo ou mais de 20 tipos
+            unique_types = len(value_counts)
+            if unique_types > 1 and unique_types <= 20:
+                result[field_label] = value_counts
+        
+        return result
+    
+    def _extract_field_value(self, serial_data: str, field_id: str) -> Optional[str]:
+        """
+        Extrai o valor de um campo específico do texto serializado
+        
+        Formato esperado: "1: valor1\n2: valor2\n100: idade_valor\n120: sexo_valor"
+        """
+        lines = serial_data.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if ':' in line:
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    
+                    if key == field_id:
+                        return value
+        
+        return None
