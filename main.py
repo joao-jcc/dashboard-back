@@ -81,5 +81,18 @@ async def get_multiple_events(request: BulkEventsRequest):
     return results
 
 
+@app.get("/api/dynamic-fields/{event_id}")
+async def get_event_dynamic_fields_distribution(event_id: int):
+    """Get dynamic fields distribution for a specific event"""
+    try:
+        distribution = analytics.get_dynamic_fields_distribution(event_id)
+        return {
+            "event_id": event_id,
+            "dynamic_fields_distribution": distribution
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing dynamic fields: {str(e)}")
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
