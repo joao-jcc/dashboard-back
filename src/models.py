@@ -30,7 +30,6 @@ class EventDetails(BaseModel):
     ticketPrice: float                 # Event ticket price
     totalRevenue: float                # Total revenue generated
     isActive: bool                     # True if event is still active (today < start_date)
-    genderDistribution: Dict[str, int] # Gender distribution: {"masculino": X, "feminino": Y, "undefined": Z}
 
 
 class ApiError(BaseModel):
