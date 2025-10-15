@@ -1,155 +1,181 @@
-"""
-Database manager for direct database connections
-Handles database queries and connection management for events data
-"""
-
 import mysql.connector
 import os
-from typing import Dict, List, Optional
-from datetime import datetime
-from dotenv import load_dotenv
-import time
-
-# Load environment variables
-load_dotenv()
+import pandas as pd
+from typing import List, Dict, Optional
+from .settings import DATABASE_CONFIG, DATABASE_MIRROR_CONFIG
 
 
 class DatabaseManager:
-    """Manages database connections and queries for the dashboard"""
-    
-    ORG_ID = 17881  # Dunamis Id
-    
-    def __init__(self):
-        self.config = {
-            'host': 'aws.connect.psdb.cloud',
-            'port': 3306,
-            'database': 'ei',
-            'user': os.getenv('USER_DATABASE_EINSC'),
-            'password': os.getenv('PASSWORD_DATABASE_EINSC'),
-            'ssl_disabled': False
-        }
+    def __init__(self, org_id: Optional[int] = None):
+        self.org_id = org_id
+        self.config = DATABASE_CONFIG
         self._connection = None
         self._cursor = None
-    
+
+    # -------------------------------------------------
+    # Connection management
+    # -------------------------------------------------
     def connect(self):
-        """Establish database connection"""
         self._connection = mysql.connector.connect(**self.config)
         self._connection.autocommit = True
         self._cursor = self._connection.cursor(dictionary=True)
 
     def disconnect(self):
-        """Close database connection and clean up resources"""
-        try:
-            if self._cursor:
-                self._cursor.close()
-                self._cursor = None
-            if self._connection:
-                self._connection.close()
-                self._connection = None
-        except Exception as e:
-            pass  # Silently ignore disconnection errors
-    
+        if self._cursor:
+            self._cursor.close()
+        if self._connection:
+            self._connection.close()
+
     def _ensure_connection(self):
-        """Ensure database connection is active"""
         if not self._connection or not self._connection.is_connected():
             self.connect()
-    
-    def get_events_for_organization(self) -> List[Dict]:
-        """Get all events for the organization"""
-        self._ensure_connection()
-        
-        query = """
-        SELECT id, titulo, tipo, created_at, data_inicio, limit_maximo_inscritos, occupied_vacancies, igreja_id 
-        FROM eventos 
-        WHERE igreja_id = %s
-        ORDER BY LOWER(titulo)
-        """
-        
-        self._cursor.execute(query, (self.ORG_ID,))
-        events = self._cursor.fetchall()
-        return events
-      
-    
-    def get_event_by_id(self, event_id: int) -> Optional[Dict]:
-        """Get a specific event by ID"""
-        self._ensure_connection()
-        
-        query = """
-        SELECT id, titulo, created_at, data_inicio, limit_maximo_inscritos, igreja_id 
-        FROM eventos 
-        WHERE id = %s AND igreja_id = %s
-        """
-        start_time = time.time()
-        self._cursor.execute(query, (event_id, self.ORG_ID))
-        event = self._cursor.fetchone()
- 
-        return event
-    
-    
-    def get_inscricoes_for_event(self, event_id: int) -> List[Dict]:
-        """Get all inscriptions for a specific event"""
-        self._ensure_connection()
-
-        query = """
-        SELECT id, inscrito_id, evento_id, status, created_at 
-        FROM inscricaos 
-        WHERE evento_id = %s AND status = 'Ok'
-        """
-        
-        self._cursor.execute(query, (event_id,))
-        inscricoes = self._cursor.fetchall()
-
-        return inscricoes
-
-    
-    def get_transactions_for_event(self, event_id: int) -> List[Dict]:
-        """Get all transactions for a specific event based on valid enrollments"""
-        self._ensure_connection()
-        
-        query = """
-        SELECT t.id, t.enrollment_id, t.amount, t.credit, t.counts_for, t.created_at
-        FROM transactions t
-        WHERE t.enrollment_id IN (
-            SELECT i.id
-            FROM inscricaos i
-            WHERE i.evento_id = %s
-              AND i.status = 'OK'
-        )
-        AND t.counts_for IN ('both', 'organization_only')
-        """
-        
-        self._cursor.execute(query, (event_id,))
-        transactions = self._cursor.fetchall()
-
-        return transactions
-    
-    def get_total_revenue_for_event(self, event_id: int) -> float:
-        """Calculate total revenue for an event using optimized SQL query - only credits"""
-        self._ensure_connection()
-        
-        # Query para somar apenas créditos (credit = TRUE)
-        query = """
-        SELECT COALESCE(SUM(t.amount), 0) as total_revenue
-        FROM transactions t
-        INNER JOIN inscricaos i ON t.enrollment_id = i.id
-        WHERE i.evento_id = %s 
-          AND t.credit = TRUE 
-          AND t.counts_for IN ('both', 'organization_only')
-        """
-        
-        # Executar a query
-        self._cursor.execute(query, (event_id,))
-        result = self._cursor.fetchone()
-        total_revenue = float(result['total_revenue']) if result else 0.0
-        
-        return total_revenue
-    
 
     def __enter__(self):
-        """Context manager entry"""
         self.connect()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - ensures cleanup"""
         self.disconnect()
+
+    # -------------------------------------------------
+    # Query — Eventos da organização
+    # -------------------------------------------------
+    def get_events_for_org(self) -> pd.DataFrame:
+        """
+        Retorna todos os eventos de uma organização (igreja).
+        Ideal para listas e metadados básicos.
+        """
+        self._ensure_connection()
+
+        query = """
+        SELECT
+            e.id AS id,
+            e.titulo AS name,
+            e.data_inicio AS start_date,
+            e.created_at AS created_at,
+            e.limit_maximo_inscritos AS target_inscriptions
+        FROM eventos e
+        WHERE e.igreja_id = %s
+        ORDER BY LOWER(e.titulo)
+        """
+
+        self._cursor.execute(query, (self.org_id,))
+        rows = self._cursor.fetchall()
+        df = pd.DataFrame(rows)
+
+        return df
+    
+
+    def get_event_by_id(self, event_id: int) -> pd.DataFrame:
+        """
+        Retorna os dados de um evento específico pelo evento_id.
+        """
+        self._ensure_connection()
+        query = """
+        SELECT
+            e.id AS id,
+            e.titulo AS name,
+            e.data_inicio AS start_date,
+            e.created_at AS created_at,
+            e.limit_maximo_inscritos AS target_inscriptions
+        FROM eventos e
+        WHERE e.id = %s
+        """
+        self._cursor.execute(query, (event_id,))
+        rows = self._cursor.fetchall()
+        df = pd.DataFrame(rows)
+        return df
+    
+    
+        
+    def get_event_inscriptions(self, event_id: int) -> pd.DataFrame:
+        """
+        Retorna todas as inscrições de um evento específico
+        """
+        self._ensure_connection()
+        query = """
+        SELECT created_at
+        FROM inscricaos
+        WHERE evento_id = %s AND status IN ('Ok', 'Pendente') AND canceled = 0
+        ORDER BY created_at ASC
+        """
+        self._cursor.execute(query, (event_id,))
+        rows = self._cursor.fetchall()
+        df = pd.DataFrame(rows)
+
+        return df
+    
+
+    # -------------------------------------------------
+    # Query — Dados detalhados de um evento
+    # -------------------------------------------------
+    def get_event_transactions_data(self, event_id: int) -> pd.DataFrame:
+            """
+            Retorna um DataFrame com dados de transações (valor, crédito e data)
+            de um evento específico.
+            """
+            self._ensure_connection()
+
+            query = """
+            SELECT
+                t.amount,
+                t.credit,
+                t.created_at AS transaction_date
+            FROM transactions AS t
+            WHERE t.enrollment_id IN (
+                SELECT id
+                FROM inscricaos
+                WHERE evento_id = %s
+                AND status IN ('Ok', 'Pendente')
+                AND canceled = 0
+            )
+            AND t.counts_for IN ('both', 'organization_only')
+            ORDER BY t.created_at ASC;
+            """
+
+            self._cursor.execute(query, (event_id,))
+            rows = self._cursor.fetchall()
+            df = pd.DataFrame(rows)
+
+            return df
+
+    # ------------------------------------------------------
+    # Query — Campos dinâmicos das inscrições de um evento
+    # ------------------------------------------------------
+    def get_event_dynamic_fields(self, event_id: int) -> pd.DataFrame:
+        """
+        Retorna todos os campos dinâmicos serializados das inscrições de um evento específico.
+        """
+        self._ensure_connection()
+
+        query = """
+        SELECT
+            serial_event_dynamic_fields
+        FROM inscricaos
+        WHERE evento_id = %s
+          AND status IN ('Ok', 'Pendente')
+          AND canceled = 0
+        ORDER BY created_at ASC
+        """
+
+        self._cursor.execute(query, (event_id,))
+        rows = self._cursor.fetchall()
+        df = pd.DataFrame(rows)
+
+        return df
+    
+    def get_event_fields(self, event_id: int) -> pd.DataFrame:
+        """
+        Retorna os campos dinâmicos definidos para um evento específico.
+        """
+        self._ensure_connection()
+        query = """
+        SELECT id, label FROM event_dynamic_fields WHERE evento_id = %s ORDER BY id ASC
+        """
+        
+        self._cursor.execute(query, (event_id,))
+        rows = self._cursor.fetchall()
+        df = pd.DataFrame(rows)
+        
+        return df
+    

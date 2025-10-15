@@ -9,27 +9,30 @@ from typing import List, Optional, Dict
 
 
 class EventSummary(BaseModel):
-    """Basic event information for sidebar listing"""
     id: int
     name: str
     created_at: datetime 
     start_date: datetime
+    target_inscriptions: int
 
 
-class EventDetails(BaseModel):
-    """Complete event details with analytics data"""
+class EventRevenue(BaseModel):
     id: int
-    name: str
-    chartDataInscriptions: Dict[str, List[int]] 
     chartDataRevenue: Dict[str, List[float]] 
-    currentInscriptions: int           # Current number of enrollments
+    ticketPrice: float     
+    totalRevenue: float 
+
+
+class EventInscriptions(BaseModel):
+    id: int
+    chartDataInscriptions: Dict[str, List[int]]
+    currentInscriptions: int
     averageInscriptions: float
-    targetInscriptions: int             # Target inscriptions (limit_maximo_inscritos)
-    daysRemaining: int                 # Days until event
-    dailyInscriptionsGoal: float       # Daily target to reach goal
-    ticketPrice: float                 # Event ticket price
-    totalRevenue: float                # Total revenue generated
-    isActive: bool                     # True if event is still active (today < start_date)
+    targetInscriptions: int
+
+class EventDynamicFields(BaseModel):
+    labels: List[str]
+    distribution: Dict[str, Dict[str, int]]
 
 
 class ApiError(BaseModel):

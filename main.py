@@ -5,17 +5,16 @@ Main application file for events data API
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Dict
 from pydantic import BaseModel
 import uvicorn
 import time
+import logging
 
-from src.models import EventSummary, EventDetails
+from src.models import EventSummary, EventInscriptions, EventRevenue, EventDynamicFields
 from src.analytics import EventAnalytics
+from src.crypto_utils import decrypt
 
-# Request models
-class BulkEventsRequest(BaseModel):
-    event_ids: List[int]
 
 app = FastAPI(
     title="Dashboard Events API",
@@ -42,56 +41,43 @@ async def root():
     return {"message": "Dashboard Events API is running"}
 
 
-@app.get("/api/events", response_model=List[EventSummary])
-async def get_events():
+@app.get("/api/events/{token}", response_model=Dict[int, EventSummary])
+async def get_events(token: str):
     """
-    Get all events summary
-    Returns basic event information for sidebar listing
+    Get all events summary for a specific org using encrypted token
     """
+    org_id = int(decrypt(token))
+    analytics.set_org_id(org_id=org_id)
     events = analytics.get_events_summary()
     return events
 
 
-@app.get("/api/events/{event_id}", response_model=EventDetails)
-async def get_event_details(event_id: int):
-    """
-    Get detailed event information with analytics data
-    Used for charts and dashboard cards
-    """
-    event_details = analytics.get_event_details(event_id)
-    if not event_details:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event_details
-
-@app.post("/api/events/bulk")
-async def get_multiple_events(request: BulkEventsRequest):
-    """Get multiple event details at once for optimization (max 5 events)"""
-    event_ids = request.event_ids
-    
-    if not event_ids or len(event_ids) > 5:
-        raise HTTPException(status_code=400, detail="event_ids list size must be greater than zero and less than five")
-    
-    # Get details for selected events
-    results = []
-    for event_id in event_ids:
-        event_details = analytics.get_event_details(event_id)
-        if event_details:
-            results.append(event_details)
-    
-    return results
+@app.get("/api/events/dynamic-fields/{token}/{event_id}", response_model=EventDynamicFields)
+def get_event_dynamic_fields_distribution(token: str, event_id: int):
+    """Get dynamic fields distribution for a specific event using encrypted token"""
+    org_id = int(decrypt(token))
+    analytics.set_org_id(org_id=org_id)
+    distribution = analytics.get_dynamic_fields_distribution(event_id)
+    return distribution
 
 
-@app.get("/api/dynamic-fields/{event_id}")
-async def get_event_dynamic_fields_distribution(event_id: int):
-    """Get dynamic fields distribution for a specific event"""
-    try:
-        distribution = analytics.get_dynamic_fields_distribution(event_id)
-        return {
-            "event_id": event_id,
-            "dynamic_fields_distribution": distribution
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing dynamic fields: {str(e)}")
+@app.get("/api/events/inscriptions/{token}/{event_id}", response_model=EventInscriptions)
+async def get_event_inscriptions(token: str, event_id: int, request: Request):
+    """Get event inscriptions analytics using encrypted token"""
+    org_id = int(decrypt(token))
+    analytics.set_org_id(org_id=org_id)
+    result = analytics.get_event_inscriptions(event_id)
+    return result
+    
+
+@app.get("/api/events/revenue/{token}/{event_id}", response_model=EventRevenue)
+async def get_event_revenue(token: str, event_id: int, request: Request):
+    """Retorna a receita total do evento using encrypted token"""
+    org_id = int(decrypt(token))
+    analytics.set_org_id(org_id=org_id)
+    result = analytics.get_event_revenue(event_id)
+    return result
+
 
 
 if __name__ == "__main__":
