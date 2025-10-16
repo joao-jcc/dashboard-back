@@ -89,3 +89,28 @@ def decrypt(token: str) -> str:
         return str(ast.literal_eval(final_value)['org_id'])
     except (ValueError, SyntaxError, KeyError):
         return ''
+
+
+# ===========================================
+# Encode/Decode numérico simples para IDs usando hashids
+# ===========================================
+
+from hashids import Hashids
+
+# Inicializa hashids com salt secreto e tamanho mínimo
+hashids = Hashids(salt="minha-chave-secreta-dashboard-2024", min_length=8)
+
+def encode_id(real_id: int) -> str:
+    """
+    Converte ID real em string encoded usando hashids
+    Ex: 43975 -> "gY4mc9A2"
+    """
+    return hashids.encode(real_id)
+
+def decode_id(encoded_id: str) -> int:
+    """
+    Converte string encoded de volta para ID real
+    Ex: "gY4mc9A2" -> 43975
+    """
+    decoded = hashids.decode(encoded_id)
+    return decoded[0] if decoded else 0

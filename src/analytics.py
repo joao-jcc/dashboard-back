@@ -25,7 +25,7 @@ class EventAnalytics:
         events_dict = {}
         for _, row in events_df.iterrows():
             event_summary = EventSummary(
-                id=row['id'],
+                id=str(row['id']),  # Converter para string temporariamente
                 name=row['name'],
                 created_at=row['created_at'],
                 start_date=row['start_date'],
@@ -40,7 +40,7 @@ class EventAnalytics:
         inscriptions_df = self.loader.get_event_inscriptions(event_id)
         if inscriptions_df.empty:
             return EventInscriptions(
-                id=event_id,
+                id=str(event_id),
                 chartDataInscriptions={"remaining_days": [], "inscriptions": []},
                 currentInscriptions=0,
                 averageInscriptions=0.0,
@@ -56,7 +56,7 @@ class EventAnalytics:
         chart_inscriptions = self._generate_inscriptions_chart_data(event_data, inscriptions_df)
 
         return EventInscriptions(
-            id=event_id,
+            id=str(event_id),
             chartDataInscriptions=chart_inscriptions,
             currentInscriptions=current_inscriptions,
             averageInscriptions=average_inscriptions,
@@ -126,7 +126,7 @@ class EventAnalytics:
         """
         event_df = self.loader.get_event_by_id(event_id)
         if event_df.empty:
-            return EventRevenue(id=event_id, chartDataRevenue={"remaining_days": [], "revenue": []}, ticketPrice=0.0, totalRevenue=0.0)
+            return EventRevenue(id=str(event_id), chartDataRevenue={"remaining_days": [], "revenue": []}, ticketPrice=0.0, totalRevenue=0.0)
 
         event_data = event_df.iloc[0]
         transactions_df = self.loader.get_event_transactions_data(event_id)
@@ -143,7 +143,7 @@ class EventAnalytics:
         ticket_price = self._calculate_ticket_price(transactions_df)
 
         return EventRevenue(
-            id=event_id,
+            id=str(event_id),
             chartDataRevenue=chart_data,
             ticketPrice=ticket_price,
             totalRevenue=total_revenue

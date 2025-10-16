@@ -9,7 +9,7 @@ from typing import List, Optional, Dict
 
 
 class EventSummary(BaseModel):
-    id: int
+    id: str
     name: str
     created_at: datetime 
     start_date: datetime
@@ -17,14 +17,14 @@ class EventSummary(BaseModel):
 
 
 class EventRevenue(BaseModel):
-    id: int
+    id: str
     chartDataRevenue: Dict[str, List[float]] 
     ticketPrice: float     
     totalRevenue: float 
 
 
 class EventInscriptions(BaseModel):
-    id: int
+    id: str
     chartDataInscriptions: Dict[str, List[int]]
     currentInscriptions: int
     averageInscriptions: float
