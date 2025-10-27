@@ -8,7 +8,7 @@ from .settings import DATABASE_CONFIG, DATABASE_MIRROR_CONFIG
 class DatabaseManager:
     def __init__(self, org_id: Optional[int] = None):
         self.org_id = org_id
-        self.config = DATABASE_CONFIG
+        self.config = DATABASE_MIRROR_CONFIG
         self._connection = None
         self._cursor = None
 

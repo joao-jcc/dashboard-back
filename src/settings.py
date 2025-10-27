@@ -17,8 +17,8 @@ DATABASE_CONFIG = {
 DATABASE_MIRROR_CONFIG = {
     'host': '5.161.229.26',
     'port': 3306,
-    'database': 'ei',
-    'user': 'bi',
-    'password': 'bi_NS9MEOXEX2s1UL8wfM-De',
-    'ssl_disabled': False
+    'database': 'espelho',
+    'user': os.getenv('USER_DATABASE_EINSC_MIRROR'),
+    'password': os.getenv('PASSWORD_DATABASE_EINSC_MIRROR'),
+    'ssl_disabled': True
 }
