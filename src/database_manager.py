@@ -136,7 +136,6 @@ class DatabaseManager:
             self._cursor.execute(query, (event_id,))
             rows = self._cursor.fetchall()
             df = pd.DataFrame(rows)
-
             return df
 
     # ------------------------------------------------------

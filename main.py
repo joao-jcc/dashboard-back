@@ -12,7 +12,7 @@ import time
 import logging
 
 from src.models import EventSummary, EventInscriptions, EventRevenue, EventDynamicFields
-from src.analytics import EventAnalytics
+from src.analytics.analytics import EventAnalytics
 from src.crypto_utils import decrypt, encode_id, decode_id
 
 
