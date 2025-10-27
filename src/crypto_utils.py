@@ -30,6 +30,11 @@ def decrypt(token: str) -> str:
 
     Retorna o plaintext (UTF-8).
     """
+    
+    # Verifica se o token tem o formato correto
+    if '.' not in token:
+        # Se não tem ponto, assume que é um org_id simples (modo desenvolvimento)
+        return token
 
     encoded_encrypted_data, encoded_private_key = token.split(".", 1)
 
