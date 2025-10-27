@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict, Optional
 from src.models import EventSummary, EventRevenue, EventInscriptions, EventDynamicFields
-from src.database_manager import DatabaseManager
+from src.database.database_manager import DatabaseManager
 from .revenue import RevenueAnalytics
 from .inscriptions import InscriptionsAnalytics
 from .dynamic_fields import DynamicFieldsAnalytics
